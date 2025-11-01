@@ -21,6 +21,7 @@ export default function UploadAudio() {
   const [loading, setLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
 
+  // Handle drag & drop
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles.length > 0) {
       const selectedFile = acceptedFiles[0];
@@ -36,6 +37,7 @@ export default function UploadAudio() {
     multiple: false,
   });
 
+  // Upload to backend
   const handleUpload = async () => {
     if (!file) return;
     setLoading(true);
@@ -44,8 +46,11 @@ export default function UploadAudio() {
     formData.append("file", file);
 
     try {
-      // Use environment variable in production, fallback to local backend in dev
-      const API_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
+      // Use Hugging Face Space in production, fallback to local FastAPI in dev
+      const API_URL =
+        process.env.REACT_APP_API_URL ||
+        "http://127.0.0.1:8000"; // local dev fallback
+
       const response = await fetch(`${API_URL}/predict`, {
         method: "POST",
         body: formData,
@@ -65,6 +70,7 @@ export default function UploadAudio() {
     }
   };
 
+  // Clear state
   const handleClear = () => {
     setFile(null);
     setPrediction("");
