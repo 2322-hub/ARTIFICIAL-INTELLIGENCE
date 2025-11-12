@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   Paper,
   Typography,
@@ -21,6 +21,12 @@ export default function UploadAudio() {
   const [loading, setLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
 
+  // Recording state
+  const [recording, setRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+
   // Handle drag & drop
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles.length > 0) {
@@ -38,18 +44,16 @@ export default function UploadAudio() {
   });
 
   // Upload to backend
-  const handleUpload = async () => {
-    if (!file) return;
+  const handleUpload = async (uploadFile) => {
+    if (!uploadFile) return;
     setLoading(true);
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", uploadFile);
 
     try {
-      // Use Hugging Face Space in production, fallback to local FastAPI in dev
       const API_URL =
-        process.env.REACT_APP_API_URL ||
-        "http://127.0.0.1:8000"; // local dev fallback
+        process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
 
       const response = await fetch(`${API_URL}/predict`, {
         method: "POST",
@@ -77,6 +81,52 @@ export default function UploadAudio() {
     setAudioUrl(null);
   };
 
+  // Start recording with auto-stop
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/wav" });
+        const recordedFile = new File([blob], "recording.wav", {
+          type: "audio/wav",
+        });
+        setAudioUrl(URL.createObjectURL(recordedFile));
+        await handleUpload(recordedFile);
+      };
+
+      mediaRecorder.start();
+      setRecording(true);
+
+      // Auto-stop after 5 seconds
+      timerRef.current = setTimeout(() => {
+        stopRecording();
+      }, 5000);
+    } catch (err) {
+      console.error("Microphone access denied:", err);
+    }
+  };
+
+  // Stop recording
+  const stopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    }
+  };
+
   return (
     <Paper
       elevation={8}
@@ -89,7 +139,7 @@ export default function UploadAudio() {
       }}
     >
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
-        Upload an Audio File
+        Upload or Record Audio
       </Typography>
 
       {/* Drag & Drop Area */}
@@ -132,7 +182,7 @@ export default function UploadAudio() {
         <Button
           variant="contained"
           color="primary"
-          onClick={handleUpload}
+          onClick={() => handleUpload(file)}
           disabled={!file || loading}
           sx={{ px: 4, textTransform: "none", fontWeight: 600 }}
         >
@@ -150,6 +200,29 @@ export default function UploadAudio() {
           >
             <DeleteIcon />
           </IconButton>
+        )}
+      </Stack>
+
+      {/* Recording Controls */}
+      <Stack direction="row" justifyContent="center" spacing={2} sx={{ mb: 3 }}>
+        {!recording ? (
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={startRecording}
+            sx={{ px: 4, textTransform: "none", fontWeight: 600 }}
+          >
+            🎤 Start Recording (auto-stop 5s)
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={stopRecording}
+            sx={{ px: 4, textTransform: "none", fontWeight: 600 }}
+          >
+            ⏹ Stop Recording
+          </Button>
         )}
       </Stack>
 
